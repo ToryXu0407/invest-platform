@@ -29,6 +29,9 @@ httpx==0.26.0
 pandas==2.2.0
 numpy==1.26.3
 
+# Data Sources
+akshare==1.13.0  # 备用数据源
+
 # AI & RAG
 langchain==0.1.0
 langchain-openai==0.0.2

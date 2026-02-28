@@ -5,7 +5,7 @@ from typing import List
 from app.core.database import get_db
 from app.schemas.token import Token
 from app.schemas.user import UserCreate, UserResponse, UserLogin
-from app.services.auth import AuthService
+from app.services.auth_service import AuthService
 
 router = APIRouter()
 

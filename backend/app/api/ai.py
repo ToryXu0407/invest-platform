@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.ai import ChatRequest, ChatResponse, ChatHistory
+from app.schemas.user import UserResponse
 from app.services.ai_service import AIService
 
 router = APIRouter()

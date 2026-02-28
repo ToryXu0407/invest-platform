@@ -1,8 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
+from datetime import datetime, timedelta
 from app.models.stock import Stock, StockDailyData, StockFinancial
-from app.schemas.stock import StockResponse
+from app.schemas.stock import StockResponse, StockIndicators
+from app.services.indicator_calculator import indicator_calculator
 
 
 class StockService:
@@ -78,7 +80,7 @@ class StockService:
             for d in data
         ]
     
-    async def get_indicators(self, code: str) -> Optional[dict]:
+    async def get_indicators(self, code: str) -> Optional[StockIndicators]:
         """获取核心指标"""
         stock = await self.get_stock_by_code(code)
         if not stock:
@@ -93,14 +95,85 @@ class StockService:
         )
         daily = result.scalar_one_or_none()
         
-        return {
-            "code": stock.code,
-            "name": stock.name,
-            "current_price": float(daily.close) if daily and daily.close else None,
-            "pe_ttm": float(daily.pe_ttm) if daily and daily.pe_ttm else None,
-            "pb": float(daily.pb) if daily and daily.pb else None,
-            "dividend_yield": float(daily.dividend_yield) if daily and daily.dividend_yield else None,
-        }
+        if not daily or not daily.close:
+            return None
+        
+        # 获取历史 PE/PB 数据用于计算百分位
+        pe_history = await self._get_pe_history(stock.id)
+        pb_history = await self._get_pb_history(stock.id)
+        
+        # 计算百分位
+        pe_percentile = None
+        pb_percentile = None
+        
+        if daily.pe_ttm and pe_history:
+            pe_percentile = indicator_calculator.calculate_percentile(
+                float(daily.pe_ttm), pe_history, days=3650
+            )
+        
+        if daily.pb and pb_history:
+            pb_percentile = indicator_calculator.calculate_percentile(
+                float(daily.pb), pb_history, days=3650
+            )
+        
+        # 获取财务数据计算真钱指数
+        true_money_index = await self._calculate_true_money_index(stock.id)
+        
+        return StockIndicators(
+            code=stock.code,
+            name=stock.name,
+            current_price=float(daily.close),
+            pe_ttm=float(daily.pe_ttm) if daily.pe_ttm else None,
+            pb=float(daily.pb) if daily.pb else None,
+            dividend_yield=float(daily.dividend_yield) if daily.dividend_yield else None,
+            pe_percentile=pe_percentile,
+            pb_percentile=pb_percentile,
+            true_money_index=true_money_index,
+        )
+    
+    async def _get_pe_history(self, stock_id: str, days: int = 3650) -> List[float]:
+        """获取历史 PE 数据"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        result = await self.db.execute(
+            select(StockDailyData.pe_ttm)
+            .where(
+                (StockDailyData.stock_id == stock_id) &
+                (StockDailyData.date >= cutoff_date) &
+                (StockDailyData.pe_ttm.isnot(None))
+            )
+        )
+        return [float(row[0]) for row in result.fetchall() if row[0] and row[0] > 0]
+    
+    async def _get_pb_history(self, stock_id: str, days: int = 3650) -> List[float]:
+        """获取历史 PB 数据"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        result = await self.db.execute(
+            select(StockDailyData.pb)
+            .where(
+                (StockDailyData.stock_id == stock_id) &
+                (StockDailyData.date >= cutoff_date) &
+                (StockDailyData.pb.isnot(None))
+            )
+        )
+        return [float(row[0]) for row in result.fetchall() if row[0] and row[0] > 0]
+    
+    async def _calculate_true_money_index(self, stock_id: str) -> Optional[float]:
+        """计算真钱指数"""
+        result = await self.db.execute(
+            select(StockFinancial)
+            .where(StockFinancial.stock_id == stock_id)
+            .order_by(StockFinancial.report_date.desc())
+            .limit(1)
+        )
+        financial = result.scalar_one_or_none()
+        
+        if not financial or not financial.net_profit or not financial.operating_cash_flow:
+            return None
+        
+        return indicator_calculator.calculate_true_money_index(
+            float(financial.operating_cash_flow),
+            float(financial.net_profit)
+        )
     
     async def get_financials(self, code: str) -> List[dict]:
         """获取财务数据"""

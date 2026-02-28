@@ -14,10 +14,15 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     print(f"🚀 Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     
-    # 创建数据库表（开发环境）
+    # 创建数据库表（开发环境）- 如果数据库可用
     if settings.ENVIRONMENT == "development":
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            print("✅ Database connected and tables created")
+        except Exception as e:
+            print(f"⚠️  Database not available: {e}")
+            print("📝 API will work but database operations will fail")
     
     yield
     
