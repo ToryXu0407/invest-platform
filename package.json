@@ -1,0 +1,19 @@
+# Root package.json for workspace management
+{
+  "name": "invest-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --port 8000",
+    "dev:frontend": "cd apps/web && pnpm dev",
+    "build": "pnpm build:frontend",
+    "build:frontend": "cd apps/web && pnpm build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
