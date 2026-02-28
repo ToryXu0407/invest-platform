@@ -109,6 +109,7 @@ class TushareService:
     ) -> List[Dict]:
         """
         获取每日指标（PE/PB/股息率等）
+        注意：daily_basic 接口需要 1000 积分
         
         Args:
             trade_date: 交易日期 (YYYYMMDD)
@@ -117,28 +118,68 @@ class TushareService:
         Returns:
             每日指标数据
         """
-        params = {'trade_date': trade_date}
-        if ts_code:
-            params['ts_code'] = ts_code
-        
-        result = await self._request('daily_basic', {
-            **params,
-            'fields': 'ts_code,trade_date,close,pe_ttm,pb,dv_ratio,total_mv'
-        })
-        
-        indicators = []
-        for item in result.get('data', {}).get('items', []):
-            indicators.append({
-                'ts_code': item[0],
-                'trade_date': item[1],
-                'close': float(item[2]) if item[2] else None,
-                'pe_ttm': float(item[3]) if item[3] else None,
-                'pb': float(item[4]) if item[4] else None,
-                'dv_ratio': float(item[5]) if item[5] else None,  # 股息率
-                'total_mv': float(item[6]) if item[6] else None  # 总市值
+        try:
+            params = {'trade_date': trade_date}
+            if ts_code:
+                params['ts_code'] = ts_code
+            
+            result = await self._request('daily_basic', {
+                **params,
+                'fields': 'ts_code,trade_date,close,pe_ttm,pb,dv_ratio,total_mv'
             })
+            
+            indicators = []
+            for item in result.get('data', {}).get('items', []):
+                indicators.append({
+                    'ts_code': item[0],
+                    'trade_date': item[1],
+                    'close': float(item[2]) if item[2] else None,
+                    'pe_ttm': float(item[3]) if item[3] else None,
+                    'pb': float(item[4]) if item[4] else None,
+                    'dv_ratio': float(item[5]) if item[5] else None,
+                    'total_mv': float(item[6]) if item[6] else None
+                })
+            
+            return indicators
+        except Exception as e:
+            # 如果 daily_basic 不可用，返回空列表
+            # PE/PB 等指标将通过其他方式计算
+            print(f"⚠️  daily_basic 接口不可用：{e}")
+            return []
+    
+    async def get_fina_mainbz(self, ts_code: str) -> List[Dict]:
+        """
+        获取财务主要指标（备用方案）
         
-        return indicators
+        Args:
+            ts_code: 股票代码
+            
+        Returns:
+            财务指标数据
+        """
+        try:
+            result = await self._request('fina_mainbz', {
+                'ts_code': ts_code,
+                'fields': 'ts_code,ann_date,end_date,roe,roa,grossmargin,npr,opmargin'
+            })
+            
+            indicators = []
+            for item in result.get('data', {}).get('items', []):
+                indicators.append({
+                    'ts_code': item[0],
+                    'ann_date': item[1],
+                    'end_date': item[2],
+                    'roe': float(item[3]) if item[3] else None,
+                    'roa': float(item[4]) if item[4] else None,
+                    'gross_margin': float(item[5]) if item[5] else None,
+                    'net_profit_margin': float(item[6]) if item[6] else None,
+                    'op_margin': float(item[7]) if item[7] else None
+                })
+            
+            return indicators
+        except Exception as e:
+            print(f"⚠️  fina_mainbz 接口不可用：{e}")
+            return []
     
     async def get_dividend(self, ts_code: str) -> List[Dict]:
         """
